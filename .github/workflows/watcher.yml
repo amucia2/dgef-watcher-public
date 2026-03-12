@@ -1,0 +1,67 @@
+name: DGEF Watcher
+
+on:
+  schedule:
+    # Runs every day at 08:00 Paris time (07:00 UTC in winter, 06:00 UTC in summer)
+    # Adjust the cron expression seasonally if you want a precise local time.
+    - cron: "0 7 * * *"
+  workflow_dispatch:   # also allows manual "Run workflow" button in the GitHub UI
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Restore cached state.json so change detection survives across runs
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            state.json
+            screenshots/
+          key: dgef-state-${{ github.run_id }}
+          restore-keys: dgef-state-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run watcher
+        env:
+          DGEF_EMAIL: ${{ secrets.DGEF_EMAIL }}
+          DGEF_PASSWORD: ${{ secrets.DGEF_PASSWORD }}
+          NOTIFY_EMAIL_FROM: ${{ secrets.NOTIFY_EMAIL_FROM }}
+          NOTIFY_EMAIL_TO: ${{ secrets.NOTIFY_EMAIL_TO }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: python run.py
+
+      # Save state.json back to cache so next run can compare
+      - name: Save state cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            state.json
+            screenshots/
+          key: dgef-state-${{ github.run_id }}
+
+      # Upload the latest screenshot as an artifact (visible in Actions UI)
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: screenshots/
+          retention-days: 30
